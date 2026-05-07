@@ -6,6 +6,7 @@ using NixPackTrace.Core;
 using NixPackTrace.Models;
 using System.Collections.Generic;
 using System.Linq;
+using QRCoder;
 
 namespace NixPackTrace.Services
 {
@@ -70,7 +71,7 @@ namespace NixPackTrace.Services
 
             using var titleFont  = new Font("Arial", 8, FontStyle.Bold);
             using var prefixFont = new Font("Arial", 11, FontStyle.Bold);   // e.g. "E26"
-            using var seqFont    = new Font("Arial", 24, FontStyle.Bold);   // e.g. "001"
+            using var seqFont    = new Font("Arial", 20, FontStyle.Bold);   // e.g. "001" (slightly smaller to fit date)
             using var smallFont  = new Font("Arial", 6, FontStyle.Bold);
             using var regFont    = new Font("Arial", 7);
 
@@ -85,19 +86,31 @@ namespace NixPackTrace.Services
 
             g.DrawString("BOX", smallFont, Brushes.Black, 4, 18);
             g.DrawString(prefix, prefixFont, Brushes.Black, 2, 26);   // "E26" – medium, line 1
-            g.DrawString(seq,    seqFont,    Brushes.Black, 2, 42);   // "001" – large,  line 2
+            g.DrawString(seq,    seqFont,    Brushes.Black, 2, 38);   // "001" – large,  line 2
+            
+            // Date below box number
+            g.DrawString($"{DateTime.Now:dd-MMM HH:mm}", regFont, Brushes.Black, 4, 65);
 
             // Divider Line
-            int rx = 68;
-            g.DrawLine(Pens.Black, rx - 3, 18, rx - 3, 75);
+            int rx = 80; // Moved right slightly to give left side more room
+            g.DrawLine(Pens.Black, rx, 18, rx, 75);
 
-            // Right side: Details
-            g.DrawString($"Qty : {itemCount}/{AppState.Settings.BoxSize}", titleFont, Brushes.Black, rx, 20);
-
-            string op = AppState.CurrentUser.Length > 10 ? AppState.CurrentUser.Substring(0, 10) : AppState.CurrentUser;
-            g.DrawString($"By  : {op}", regFont, Brushes.Black, rx, 35);
-
-            g.DrawString($"{DateTime.Now:dd-MMM HH:mm}", regFont, Brushes.Black, rx, 50);
+            // Right side: QR Code
+            using (var qrGenerator = new QRCodeGenerator())
+            {
+                var qrCodeData = qrGenerator.CreateQrCode(boxNo, QRCodeGenerator.ECCLevel.Q);
+                using (var qrCode = new QRCode(qrCodeData))
+                {
+                    using (var qrCodeImage = qrCode.GetGraphic(2))
+                    {
+                        // Draw QR Code centered on the right side
+                        // Right side width: 157 - rx (80) = 77
+                        // Available height: 79 - 18 = 61
+                        // Target size: 55x55
+                        g.DrawImage(qrCodeImage, new Rectangle(rx + 10, 18, 55, 55));
+                    }
+                }
+            }
         }
     }
 }
