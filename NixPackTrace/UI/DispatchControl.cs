@@ -169,10 +169,26 @@ namespace NixPackTrace.UI
             bool saved = await _host.LocalDb.InsertDispatchAsync(record);
             if (saved)
             {
+                int quantity = 0;
+                if (int.TryParse(from, out int fNum) && int.TryParse(to, out int tNum))
+                {
+                    quantity = tNum - fNum + 1;
+                }
+                else if (from.Length > 3 && to.Length > 3)
+                {
+                    string fSeq = from.Substring(3);
+                    string tSeq = to.Substring(3);
+                    if (int.TryParse(fSeq, out int f) && int.TryParse(tSeq, out int t))
+                        quantity = t - f + 1;
+                }
+
                 // Sync to Firebase
                 bool synced = await _host.FirebaseService.UpdateDispatchAsync(record);
                 if (synced)
+                {
                     await _host.LocalDb.MarkDispatchAsSyncedAsync(record.DispatchId);
+                    if (quantity > 0) _ = _host.FirebaseService.IncrementQuantityMetricAsync("Dispatched", quantity);
+                }
 
                 MessageBox.Show($"Dispatch record saved.\nBoxes {from} → {to} marked as dispatched.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 txtFromBox.Clear();

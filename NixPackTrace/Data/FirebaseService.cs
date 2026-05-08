@@ -149,6 +149,11 @@ namespace NixPackTrace.Data
                 var content  = new StringContent(body, Encoding.UTF8, "application/json");
                 var response = await _http.PutAsync(url, content);   // PUT = set/overwrite
 
+                if (response.IsSuccessStatusCode)
+                {
+                    _ = IncrementDailyMetricAsync("Packed");
+                }
+
                 IsOnline = true;
                 return response.IsSuccessStatusCode;
             }
@@ -221,6 +226,53 @@ namespace NixPackTrace.Data
                 IsOnline = false;
                 return false;
             }
+        }
+
+        // ─── Metrics ──────────────────────────────────────────────────────────────
+
+        public async Task IncrementDailyMetricAsync(string metricType)
+        {
+            await IncrementQuantityMetricAsync(metricType, 1);
+        }
+
+        public async Task IncrementQuantityMetricAsync(string metricType, int quantity)
+        {
+            if (quantity <= 0) return;
+            try
+            {
+                string baseUrl = BaseUrl;
+                if (string.IsNullOrEmpty(baseUrl)) return;
+                baseUrl += "/";
+
+                string monthStr = DateTime.Now.ToString("yyyy-MM");
+                string dayStr = DateTime.Now.ToString("yyyy-MM-dd");
+
+                await IncrementSingleMetricAsync($"{baseUrl}Metrics/AllTime/Total{metricType}.json", quantity);
+                await IncrementSingleMetricAsync($"{baseUrl}Metrics/{monthStr}/Month{metricType}.json", quantity);
+                await IncrementSingleMetricAsync($"{baseUrl}Metrics/{dayStr}/Today{metricType}.json", quantity);
+            }
+            catch { }
+        }
+
+        private async Task IncrementSingleMetricAsync(string url, int quantity)
+        {
+            try
+            {
+                int currentVal = 0;
+                var getRes = await _http.GetAsync(url);
+                if (getRes.IsSuccessStatusCode)
+                {
+                    string content = await getRes.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrWhiteSpace(content) && content != "null")
+                    {
+                        int.TryParse(content, out currentVal);
+                    }
+                }
+                currentVal += quantity;
+                var putContent = new StringContent(currentVal.ToString(), Encoding.UTF8, "application/json");
+                await _http.PutAsync(url, putContent);
+            }
+            catch { }
         }
 
         // ─── Helper ───────────────────────────────────────────────────────────────
