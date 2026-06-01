@@ -91,7 +91,7 @@ namespace NixPackTrace.UI
             {
                 Cursor = Cursors.WaitCursor;
                 await _host.LocalDb.DeleteRecordAsync(record.MAC_ID);
-                await _host.FirebaseService.DeletePackingAsync(record.MAC_ID);
+                await _host.FirebaseService.DeletePackingAsync(record.SHORT_QR);
                 Cursor = Cursors.Default;
                 
                 MessageBox.Show("Deleted successfully.", "Done");

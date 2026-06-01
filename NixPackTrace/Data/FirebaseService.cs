@@ -143,7 +143,7 @@ namespace NixPackTrace.Data
                     StationName= AppState.Settings.StationName
                 };
 
-                string url  = $"{BaseUrl}/EndToEndTraceability/{SanitizeKey(record.MAC_ID)}/PackingApp.json";
+                string url  = $"{BaseUrl}/EndToEndTraceability/{SanitizeKey(record.SHORT_QR)}/PackingApp.json";
                 string body = JsonSerializer.Serialize(payload);
 
                 var content  = new StringContent(body, Encoding.UTF8, "application/json");
@@ -164,11 +164,11 @@ namespace NixPackTrace.Data
             }
         }
 
-        public async Task<bool> DeletePackingAsync(string macId)
+        public async Task<bool> DeletePackingAsync(string serialId)
         {
             try
             {
-                string url  = $"{BaseUrl}/EndToEndTraceability/{SanitizeKey(macId)}/PackingApp.json";
+                string url  = $"{BaseUrl}/EndToEndTraceability/{SanitizeKey(serialId)}/PackingApp.json";
                 var response = await _http.DeleteAsync(url);
                 IsOnline = true;
                 return response.IsSuccessStatusCode;

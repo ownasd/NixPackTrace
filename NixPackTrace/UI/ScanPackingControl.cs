@@ -241,42 +241,18 @@ namespace NixPackTrace.UI
             }
         }
 
-        private async Task ProcessMacAsync(string macId)
+        private Task ProcessMacAsync(string macId)
         {
             if (macId.Length < AppState.Settings.MacIdMinLength)
             {
                 ShowStatus($"✗ MAC too short (min {AppState.Settings.MacIdMinLength})", success: false);
-                return;
+                return Task.CompletedTask;
             }
             if (!string.IsNullOrEmpty(AppState.Settings.MacIdRequiredText) && 
                 !macId.Contains(AppState.Settings.MacIdRequiredText, StringComparison.OrdinalIgnoreCase))
             {
                 ShowStatus($"✗ MAC must contain '{AppState.Settings.MacIdRequiredText}'", success: false);
-                return;
-            }
-
-            // Local duplicate check first (instant)
-            string? existingBox = await _host.LocalDb.GetLocalBoxNoForMacAsync(macId);
-            if (existingBox != null)
-            {
-                ShowStatus($"Already packed locally in Box {existingBox}", success: false);
-                return;
-            }
-
-            // Firebase validation — reads AssemblyApp.json and checks status = OK
-            ShowStatus("Validating with Firebase (reading AssemblyApp.json)…", success: true);
-            var (ok, error, assemblyInfo) = await _host.FirebaseService.ValidateMacAsync(macId);
-
-            if (!ok && !error.Contains("Offline", StringComparison.OrdinalIgnoreCase))
-            {
-                ShowStatus($"✗ {error}", success: false);
-                return;
-            }
-
-            string detail = "";
-            if (ok && assemblyInfo != null)
-            {
-                detail = $"  |  Assembled by: {assemblyInfo.Operator}  Shift: {assemblyInfo.Shift}  Station: {assemblyInfo.StationName}  @{assemblyInfo.Timestamp}";
+                return Task.CompletedTask;
             }
 
             _pendingMacId = macId;
@@ -284,19 +260,15 @@ namespace NixPackTrace.UI
 
             if (AppState.Settings.RequireLongQr)
             {
-                ShowStatus(ok ? $"✔ Assembly OK — MAC: {macId}{detail}   →  Now scan Long QR Code" : $"⚠ Firebase offline – packing offline. Scan Long QR now.", success: true);
+                ShowStatus($"✔ MAC Captured: {macId}   →  Now scan Long QR Code", success: true);
                 SetState(ScanState.WaitingForQr);
-            }
-            else if (AppState.Settings.RequireTestingQr)
-            {
-                ShowStatus(ok ? $"✔ Assembly OK — MAC: {macId}{detail}   →  Now scan Testing QR" : $"⚠ Firebase offline – packing offline. Scan Testing QR now.", success: true);
-                SetState(ScanState.WaitingForTestingQr);
             }
             else
             {
-                // Both disabled, pack immediately
-                await CommitPackingRecordAsync("");
+                ShowStatus($"✗ System configuration requires Long QR to be enabled.", success: false);
             }
+            
+            return Task.CompletedTask;
         }
 
         private async Task ProcessQrAsync(string longQr)
@@ -313,11 +285,37 @@ namespace NixPackTrace.UI
                 return;
             }
 
+            // Extract the 11-char master serial for Firebase validation
+            string masterSerial = longQr.Length >= 11 ? longQr.Substring(longQr.Length - 11) : longQr;
+            
+            // Local duplicate check using masterSerial
+            string? existingBox = await _host.LocalDb.GetLocalBoxNoForMacAsync(masterSerial);
+            if (existingBox != null)
+            {
+                ShowStatus($"Already packed locally in Box {existingBox}", success: false);
+                return;
+            }
+
+            ShowStatus("Validating Serial with Firebase…", success: true);
+            var (ok, error, assemblyInfo) = await _host.FirebaseService.ValidateMacAsync(masterSerial);
+
+            if (!ok && !error.Contains("Offline", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowStatus($"✗ {error}", success: false);
+                return;
+            }
+
+            string detail = "";
+            if (ok && assemblyInfo != null)
+            {
+                detail = $"  |  Assembled by: {assemblyInfo.Operator}  @{assemblyInfo.Timestamp}";
+            }
+
             _pendingLongQr = longQr;
             
             if (AppState.Settings.RequireTestingQr)
             {
-                ShowStatus($"✔ Full Serial QR OK — Now scan Testing QR", success: true);
+                ShowStatus(ok ? $"✔ Serial OK {detail} → Now scan Testing QR" : $"⚠ Offline – packing offline. Scan Testing QR now.", success: true);
                 SetState(ScanState.WaitingForTestingQr);
             }
             else
@@ -347,7 +345,7 @@ namespace NixPackTrace.UI
         private async Task CommitPackingRecordAsync(string testingQr)
         {
             // Extract short QR = last 11 characters of full serial (if we scanned a long QR)
-            string shortQr = "";
+            string shortQr = _pendingLongQr;
             if (!string.IsNullOrEmpty(_pendingLongQr) && _pendingLongQr.Length >= 11)
             {
                 shortQr = _pendingLongQr[^11..];
